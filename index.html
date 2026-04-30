@@ -94,7 +94,7 @@
         <form id="login-form" onsubmit="handleLogin(event)">
           <div class="form-group">
             <label class="form-label" for="email">Email</label>
-            <input id="email" class="form-control" type="email" placeholder="nama@instansi.go.id" value="guest@rightaid.id" autocomplete="email" required />
+            <input id="email" class="form-control" type="email" placeholder="nama@instansi.go.id" value="guest@rightaid" autocomplete="email" required />
           </div>
           <div class="form-group">
             <label class="form-label" for="password">Password</label>
@@ -149,7 +149,7 @@
       await App.sleep(900);
 
       // Validate credentials
-      const validEmails = ["guest@rightaid.id", "analis@kemensos.go.id"];
+      const validEmails = ["guest@rightaid", "analis@kemensos.go.id"];
       if (!validEmails.includes(email) || pwd !== "guest123") {
         err.classList.add("show");
         btn.disabled = false;
@@ -159,7 +159,7 @@
       }
 
       // Set session
-      const nameMap = { "guest@rightaid.id": "Analis Kebijakan", "analis@kemensos.go.id": "Dr. Ratna Dewi" };
+      const nameMap = { "guest@rightaid": "Analis Kebijakan", "analis@kemensos.go.id": "Dr. Ratna Dewi" };
       App.SESSION.user = { name: nameMap[email] || "Analis Kebijakan", role: "Kemensos RI", email };
       App.saveSession();
 

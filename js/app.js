@@ -1,7 +1,7 @@
 /* RightAid Shared Utilities */
 /* Session state */
 var SESSION = {
-  user: { name: "Analis Kebijakan", role: "Kemensos RI", email: "guest@rightaid.id" },
+  user: { name: "Analis Kebijakan", role: "Kemensos RI", email: "guest@rightaid" },
   province: null,
   scenario: "normal",
   anomalyPct: 15,
@@ -256,7 +256,7 @@ loadSession();
     return;
   }
   if (!sessionStorage.getItem("rightaid_session")) {
-    SESSION.user     = { name: "Analis Kebijakan", role: "Kemensos RI", email: "guest@rightaid.id" };
+    SESSION.user     = { name: "Analis Kebijakan", role: "Kemensos RI", email: "guest@rightaid" };
     SESSION.province = SESSION.province || "JB";
     SESSION.scenario = SESSION.scenario || "normal";
     SESSION.anomalyPct = SESSION.anomalyPct || 15;
