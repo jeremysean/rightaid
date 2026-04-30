@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Beranda - RightAid</title>
+  <meta name="description" content="Dashboard ringkasan nasional RightAid: statistik kemiskinan, mis-targeting, dan kinerja model." />
+  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="css/style.css" />
+  <style>
+    .progress-label { display:flex; justify-content:space-between; font-size:.75rem; margin-bottom:5px; }
+    .progress-label span:first-child { font-weight:600; }
+    .progress-label span:last-child { color:var(--text-2); }
+    .province-row { display:flex; align-items:center; gap:10px; padding:10px 0; border-bottom:1px solid var(--border); }
+    .province-row:last-child { border-bottom:none; }
+    .province-rank { width:24px; text-align:center; font-size:.75rem; font-weight:700; color:var(--text-3); }
+    .province-name { flex:1; font-size:.83rem; font-weight:600; }
+    .province-bar { width:90px; }
+    .province-val { font-size:.78rem; color:var(--text-2); width:40px; text-align:right; }
+    .model-compare { display:grid; grid-template-columns:1fr auto 1fr; gap:16px; align-items:start; }
+    .model-col { }
+    .model-label { font-size:.73rem; font-weight:700; text-transform:uppercase; letter-spacing:.05em; margin-bottom:10px; }
+    .model-label.pmt { color:var(--text-2); }
+    .model-label.ml { color:var(--accent); }
+    .model-metric { display:flex; justify-content:space-between; align-items:center; padding:7px 0; border-bottom:1px solid var(--border); font-size:.8rem; }
+    .model-metric:last-child { border-bottom:none; }
+    .model-metric .key { color:var(--text-2); }
+    .model-metric .val { font-weight:700; }
+    .vs-divider { display:flex; align-items:center; justify-content:center; height:100%; }
+    .vs-badge { background:var(--surface-2); border:1px solid var(--border); border-radius:50%; width:32px; height:32px; display:flex; align-items:center; justify-content:center; font-size:.7rem; font-weight:800; color:var(--text-2); }
+    .insight-item { display:flex; gap:12px; padding:12px 0; border-bottom:1px solid var(--border); }
+    .insight-item:last-child { border-bottom:none; }
+    .insight-icon { width:32px; height:32px; border-radius:8px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+    .insight-text h4 { font-size:.83rem; font-weight:700; margin-bottom:3px; }
+    .insight-text p { font-size:.76rem; color:var(--text-2); line-height:1.5; }
+    .legend-row { display:flex; align-items:center; gap:8px; font-size:.76rem; color:var(--text-2); }
+    .legend-dot { width:10px; height:10px; border-radius:2px; flex-shrink:0; }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <div id="sidebar-mount"></div>
+    <div class="main-content">
+      <div id="topbar-mount"></div>
+      <div class="page-body">
+
+        <!-- Stat grid -->
+        <div class="stat-grid" id="stat-grid"></div>
+
+        <!-- Row 1: Trend chart + Province ranking -->
+        <div class="grid-2 mb-6">
+          <!-- Trend chart -->
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <div class="card-title">Tren Error Rate - ML-PMT vs PMT Konvensional</div>
+                <div class="card-subtitle">10 bulan terakhir, nasional</div>
+              </div>
+              <div style="display:flex;gap:12px;">
+                <div class="legend-row"><div class="legend-dot" style="background:#DC2626;"></div> Exclusion Error</div>
+                <div class="legend-row"><div class="legend-dot" style="background:#2563EB;"></div> Inclusion Error</div>
+              </div>
+            </div>
+            <div class="card-body">
+              <canvas id="trend-chart" width="520" height="200" style="width:100%;height:200px;"></canvas>
+            </div>
+          </div>
+
+          <!-- Province ranking -->
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <div class="card-title">Provinsi Tertinggi Exclusion Error</div>
+                <div class="card-subtitle">Estimasi PMT konvensional, 2024</div>
+              </div>
+              <span class="badge badge-yellow">Perlu Perhatian</span>
+            </div>
+            <div class="card-body" id="province-ranking"></div>
+          </div>
+        </div>
+
+        <!-- Row 2: Model comparison + Insights -->
+        <div class="grid-2 mb-6">
+          <!-- Model comparison -->
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <div class="card-title">Perbandingan Performa Model</div>
+                <div class="card-subtitle">PMT Konvensional vs ML-PMT RightAid, kondisi baseline</div>
+              </div>
+            </div>
+            <div class="card-body">
+              <div class="model-compare">
+                <div class="model-col">
+                  <div class="model-label pmt">PMT Konvensional</div>
+                  <div class="model-metric"><span class="key">F1-Score</span><span class="val">0.71</span></div>
+                  <div class="model-metric"><span class="key">AUC-ROC</span><span class="val">0.74</span></div>
+                  <div class="model-metric"><span class="key">Exclusion Error</span><span class="val text-danger">28.4%</span></div>
+                  <div class="model-metric"><span class="key">Inclusion Error</span><span class="val text-warning">22.1%</span></div>
+                  <div class="model-metric"><span class="key">Presisi</span><span class="val">0.68</span></div>
+                  <div class="model-metric"><span class="key">Recall</span><span class="val">0.73</span></div>
+                </div>
+                <div class="vs-divider"><div class="vs-badge">VS</div></div>
+                <div class="model-col">
+                  <div class="model-label ml">ML-PMT RightAid</div>
+                  <div class="model-metric"><span class="key">F1-Score</span><span class="val text-success">0.88</span></div>
+                  <div class="model-metric"><span class="key">AUC-ROC</span><span class="val text-success">0.93</span></div>
+                  <div class="model-metric"><span class="key">Exclusion Error</span><span class="val text-success">14.7%</span></div>
+                  <div class="model-metric"><span class="key">Inclusion Error</span><span class="val text-success">11.3%</span></div>
+                  <div class="model-metric"><span class="key">Presisi</span><span class="val text-success">0.91</span></div>
+                  <div class="model-metric"><span class="key">Recall</span><span class="val text-success">0.86</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Key insights -->
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">Insight Utama</div>
+              <span class="badge badge-blue">Terbaru</span>
+            </div>
+            <div class="card-body" id="insights-panel"></div>
+          </div>
+        </div>
+
+        <!-- Row 3: DTSEN progress + Quick actions -->
+        <div class="grid-2">
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <div class="card-title">Progress DTSEN per Provinsi</div>
+                <div class="card-subtitle">Inpres No. 4 Tahun 2025 - pembaruan data nasional</div>
+              </div>
+              <span class="badge badge-green">Aktif</span>
+            </div>
+            <div class="card-body" id="dtsen-progress"></div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">Mulai Analisis</div>
+              <div class="card-subtitle">Pilih langkah berikutnya</div>
+            </div>
+            <div class="card-body">
+              <div style="display:flex;flex-direction:column;gap:10px;">
+                <a href="data-viewer.html" class="btn btn-primary" style="justify-content:flex-start;padding:14px 16px;border-radius:var(--radius);">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z"/></svg>
+                  <div style="text-align:left"><div style="font-size:.85rem;font-weight:700;">Data Viewer & Explorer</div><div style="font-size:.74rem;opacity:.85;font-weight:400;">Eksplorasi data profil RT dan anomali mis-targeting</div></div>
+                </a>
+                <a href="analysis.html" class="btn btn-secondary" style="justify-content:flex-start;padding:14px 16px;border-radius:var(--radius);">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+                  <div style="text-align:left"><div style="font-size:.85rem;font-weight:700;">Jalankan Analisis Model</div><div style="font-size:.74rem;opacity:.7;font-weight:400;">Confusion matrix, SHAP, perbandingan desil</div></div>
+                </a>
+                <a href="policy.html" class="btn btn-outline" style="justify-content:flex-start;padding:14px 16px;border-radius:var(--radius);">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                  <div style="text-align:left"><div style="font-size:.85rem;font-weight:700;">Buat Policy Brief</div><div style="font-size:.74rem;opacity:.8;font-weight:400;">Generate rekomendasi kebijakan otomatis</div></div>
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+  <div id="toast-container"></div>
+  <script src="js/data.js?v=2"></script>
+  <script src="js/app.js?v=2"></script>
+  <script>
+  document.addEventListener("DOMContentLoaded", function() {
+    // Mount sidebar & topbar
+    document.getElementById("sidebar-mount").innerHTML = App.buildSidebar("dashboard");
+    document.getElementById("topbar-mount").innerHTML = App.buildTopbar("Beranda");
+
+    const { NATIONAL_STATS, PROVINCES, MONTHLY_TREND, ACCURACY_COMPARISON } = EkoData;
+
+    // Stat cards
+    const stats = [
+      { label: "Penduduk Miskin", value: NATIONAL_STATS.poorPopulation, delta: "-0.46 Jt dari Mar 2024", dir: "down" },
+      { label: "Tingkat Kemiskinan", value: NATIONAL_STATS.povertyRate, delta: "-0.17 poin dari Mar 2024", dir: "down" },
+      { label: "Rasio Gini", value: NATIONAL_STATS.giniCoef, delta: "+0.002 dari Mar 2024", dir: "up" },
+      { label: "Anggaran Bansos 2024", value: NATIONAL_STATS.socialBudget, delta: "+12.3% dari 2023", dir: "up" },
+    ];
+    const icons = [
+      `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`,
+      `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="m19 9-5 5-4-4-3 3"/></svg>`,
+      `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`,
+      `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>`,
+    ];
+    document.getElementById("stat-grid").innerHTML = stats.map((s, i) => `
+      <div class="stat-card">
+        <div class="stat-label">${icons[i]} ${s.label}</div>
+        <div class="stat-value">${s.value}</div>
+        <div class="stat-delta ${s.dir === 'down' ? 'down' : 'up'}">
+          <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="${s.dir === 'down' ? 'M12 5v14M5 12l7 7 7-7' : 'M12 19V5M5 12l7-7 7 7'}"/></svg>
+          ${s.delta}
+        </div>
+      </div>
+    `).join("");
+
+    // Trend chart - drawLineChart auto-handles responsive sizing via ResizeObserver
+    const trendCanvas = document.getElementById("trend-chart");
+    App.drawLineChart(trendCanvas, MONTHLY_TREND.map(d => d.month), [
+      { data: MONTHLY_TREND.map(d => d.exclusion) },
+      { data: MONTHLY_TREND.map(d => d.inclusion) },
+    ], { colors: ["#DC2626", "#2563EB"] });
+
+    // Province ranking
+    const ranked = [...PROVINCES].sort((a, b) => b.povertyRate - a.povertyRate).slice(0, 6);
+    document.getElementById("province-ranking").innerHTML = ranked.map((p, i) => `
+      <div class="province-row">
+        <div class="province-rank">${i+1}</div>
+        <div class="province-name">${p.name}</div>
+        <div class="province-bar">
+          <div class="progress-bar"><div class="progress-fill ${p.povertyRate > 15 ? 'red' : p.povertyRate > 10 ? 'yellow' : ''}" style="width:${Math.min(100, p.povertyRate * 3)}%"></div></div>
+        </div>
+        <div class="province-val">${p.povertyRate}%</div>
+      </div>
+    `).join("");
+
+    // Key insights
+    const insights = [
+      { icon: "danger", color: "#FEE2E2", iconColor: "#DC2626", title: "Exclusion error Papua Pegunungan tertinggi", text: "32.97% tingkat kemiskinan dengan 64.3% rumah tangga tanpa akses listrik - anomali terbanyak terdeteksi model." },
+      { icon: "warning", color: "#FFFBEB", iconColor: "#D97706", title: "Proyeksi PHK Massal meningkatkan mis-targeting 38%", text: "Proyeksi dampak PHK manufaktur di Jawa Barat menunjukkan PMT konvensional hanya mendeteksi 51% dari kelompok yang seharusnya menerima bansos." },
+      { icon: "success", color: "#F0FDF4", iconColor: "#16A34A", title: "ML-PMT kurangi exclusion error hingga 48%", text: "Dari 28.4% menjadi 14.7% dalam kondisi baseline - konsisten dengan temuan riset University of Groningen 2025." },
+    ];
+    const insIcons = [
+      `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>`,
+      `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>`,
+      `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg>`,
+    ];
+    document.getElementById("insights-panel").innerHTML = insights.map((ins, i) => `
+      <div class="insight-item">
+        <div class="insight-icon" style="background:${ins.color};color:${ins.iconColor};">${insIcons[i]}</div>
+        <div class="insight-text">
+          <h4>${ins.title}</h4>
+          <p>${ins.text}</p>
+        </div>
+      </div>
+    `).join("");
+
+    // DTSEN progress
+    const dtsenData = [
+      { prov: "DKI Jakarta",           pct: 98 },
+      { prov: "Jawa Barat",            pct: 91 },
+      { prov: "Jawa Tengah",           pct: 88 },
+      { prov: "Jawa Timur",            pct: 85 },
+      { prov: "Bali",                  pct: 83 },
+      { prov: "Sumatera Utara",        pct: 79 },
+      { prov: "Kalimantan Timur",      pct: 74 },
+      { prov: "Sulawesi Selatan",      pct: 72 },
+      { prov: "Aceh",                  pct: 63 },
+      { prov: "Nusa Tenggara Timur",   pct: 58 },
+      { prov: "Maluku",                pct: 44 },
+      { prov: "Papua Pegunungan",      pct: 34 },
+    ];
+    document.getElementById("dtsen-progress").innerHTML = dtsenData.map(d => `
+      <div style="margin-bottom:12px;">
+        <div class="progress-label"><span>${d.prov}</span><span>${d.pct}%</span></div>
+        <div class="progress-bar"><div class="progress-fill ${d.pct < 50 ? 'red' : d.pct < 80 ? 'yellow' : 'green'}" style="width:${d.pct}%"></div></div>
+      </div>
+    `).join("");
+  
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Analisis Targeting - RightAid</title>
+  <meta name="description" content="Analisis deteksi mis-targeting bansos menggunakan RightAid ML-PMT." />
+  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="css/style.css" />
+  <style>
+    .metric-pill { padding:14px 20px; border-radius:var(--radius-lg); background:var(--surface); border:1px solid var(--border); box-shadow:var(--shadow); display:flex; flex-direction:column; gap:4px; }
+    .metric-pill .val { font-size:1.8rem; font-weight:800; line-height:1; }
+    .metric-pill .lbl { font-size:.8rem; color:var(--text-2); font-weight:600; }
+    .metric-row { display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-bottom:24px; }
+    .comparison-grid { display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-bottom:24px; }
+    .shap-record-item { padding:12px 16px; border-radius:var(--radius); border:1px solid var(--border); cursor:pointer; transition:border-color var(--transition),background var(--transition); margin-bottom:8px; display:flex; flex-direction:column; gap:4px; }
+    .shap-record-item:hover { border-color:var(--accent); background:var(--accent-light); }
+    .shap-record-item.selected { border-color:var(--accent); background:var(--accent-light); border-left:4px solid var(--accent); }
+    .rec-header { display:flex; align-items:center; justify-content:space-between; }
+    .rec-id { font-size:.85rem; font-family:monospace; font-weight:700; color:var(--text); }
+    .rec-status { font-size:.7rem; padding:2px 6px; border-radius:4px; font-weight:700; }
+    .status-err { background:var(--danger-light); color:var(--danger); }
+    .status-warn { background:var(--warning-light); color:var(--warning); }
+    .rec-details { font-size:.75rem; color:var(--text-2); }
+    .legend-item { display:flex; align-items:center; gap:6px; font-size:.75rem; color:var(--text-2); font-weight:500; }
+    .legend-sq { width:12px; height:12px; border-radius:3px; }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <div id="sidebar-mount"></div>
+    <div class="main-content">
+      <div id="topbar-mount"></div>
+      <div class="page-body">
+
+        <!-- Scenario selector bar -->
+        <div class="card mb-6">
+          <div class="card-body" style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+            <div style="font-weight:600;font-size:.85rem;color:var(--text-2);flex-shrink:0;">Skenario Kebijakan:</div>
+            <div class="tabs" style="flex:1;max-width:400px;" id="scenario-tabs">
+              <button class="tab-btn active" onclick="setScenario('normal',this)">Kondisi Normal</button>
+              <button class="tab-btn" onclick="setScenario('phk',this)">PHK Massal</button>
+              <button class="tab-btn" onclick="setScenario('bencana',this)">Pasca-Bencana</button>
+            </div>
+            <div id="scenario-badge"></div>
+            <a href="data-viewer.html" class="btn btn-secondary btn-sm" style="margin-left:auto;">
+              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h18"/><circle cx="6" cy="6" r="1.5" fill="currentColor"/><circle cx="6" cy="12" r="1.5" fill="currentColor"/><circle cx="6" cy="18" r="1.5" fill="currentColor"/></svg>
+              Data Viewer
+            </a>
+          </div>
+        </div>
+
+        <!-- Metric overview -->
+        <div id="metric-row-ml" class="metric-row"></div>
+
+        <!-- Row 1: Decile distribution chart -->
+        <div class="card mb-6">
+          <div class="card-header">
+            <div>
+              <div class="card-title">Distribusi Targeting Kesejahteraan</div>
+              <div class="card-subtitle">Perbandingan antara data DTSEN aktual dan deteksi model ML-PMT pada desil 1-10</div>
+            </div>
+            <div style="display:flex;gap:16px;">
+              <div class="legend-item"><div class="legend-sq" style="background:#6B7280;"></div> Kondisi Aktual DTSEN</div>
+              <div class="legend-item"><div class="legend-sq" style="background:#2563EB;"></div> Deteksi ML-PMT</div>
+            </div>
+          </div>
+          <div class="card-body">
+            <canvas id="decile-chart" width="900" height="260" style="width:100%;height:260px;"></canvas>
+          </div>
+        </div>
+
+        <!-- Row 2: Candidates and SHAP panel -->
+        <div class="comparison-grid">
+          <!-- Candidate mis-targeting list -->
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <div class="card-title">Kandidat Mis-Targeting Prioritas</div>
+                <div class="card-subtitle">Rumah tangga dengan indikasi anomali tinggi yang membutuhkan verifikasi</div>
+              </div>
+            </div>
+            <div class="card-body" style="height:500px;overflow-y:auto;padding-right:8px;" id="candidate-list"></div>
+          </div>
+
+          <!-- SHAP panel -->
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <div class="card-title">Analisis Faktor Risiko (SHAP)</div>
+                <div class="card-subtitle">Faktor penentu mengapa record ini terdeteksi sebagai anomali</div>
+              </div>
+            </div>
+            <div class="card-body" style="height:500px;overflow-y:auto;">
+              <div id="shap-placeholder" style="text-align:center;padding:80px 24px;color:var(--text-3);">
+                <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:.4;margin-bottom:12px;"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+                <p style="font-size:.9rem;font-weight:600;color:var(--text-2);">Pilih Record Kandidat</p>
+                <p style="font-size:.8rem;">Klik salah satu record di panel kiri untuk melihat kontribusi setiap fitur terhadap prediksi kelayakan bansosnya.</p>
+              </div>
+              <div id="shap-panel" style="display:none;">
+                <div id="shap-record-info" style="margin-bottom:20px;padding:16px;background:var(--surface-2);border-radius:var(--radius);font-size:.85rem;"></div>
+                <div style="font-size:.8rem;font-weight:700;margin-bottom:16px;color:var(--text-2);">Kontribusi Fitur (Nilai SHAP)</div>
+                <div id="shap-bars" style="margin-bottom:24px;"></div>
+                <div class="divider"></div>
+                <div style="display:flex;flex-direction:column;gap:8px;font-size:.75rem;">
+                  <div class="legend-item"><div class="legend-sq" style="background:#2563EB;"></div> Mendorong prediksi ke arah <strong>TIDAK LAYAK</strong> (Desil Atas)</div>
+                  <div class="legend-item"><div class="legend-sq" style="background:#DC2626;"></div> Mendorong prediksi ke arah <strong>LAYAK BANSOS</strong> (Desil Bawah)</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+  
+  <div id="toast-container"></div>
+  <script src="js/data.js?v=2"></script>
+  <script src="js/app.js?v=2"></script>
+  <script>
+    document.addEventListener("DOMContentLoaded", function() {
+      document.getElementById("sidebar-mount").innerHTML = App.buildSidebar("analysis");
+      document.getElementById("topbar-mount").innerHTML = App.buildTopbar("Analisis Targeting");
+
+      window.currentScenario = App.SESSION.scenario || "normal";
+      renderAll();
+    });
+
+    const scenDescMap = {
+      normal: { label: "Kondisi Baseline", cls: "badge-green" },
+      phk: { label: "Dampak PHK Massal", cls: "badge-yellow" },
+      bencana: { label: "Dampak Bencana", cls: "badge-red" },
+    };
+
+    function setScenario(sc, el) {
+      window.currentScenario = sc;
+      App.SESSION.scenario = sc;
+      App.saveSession();
+      document.querySelectorAll(".tab-btn").forEach(function(b) { b.classList.remove("active"); });
+      el.classList.add("active");
+      renderAll();
+    }
+
+    function renderAll() {
+      var sc = window.currentScenario;
+      var d = scenDescMap[sc];
+      document.getElementById("scenario-badge").innerHTML = '<span class="badge ' + d.cls + '">' + d.label + '</span>';
+      
+      renderMetrics(sc);
+      renderDecileChart(sc);
+      renderCandidates(sc);
+    }
+
+    function renderMetrics(sc) {
+      var adj = { normal: [0,0,0,0], phk: [-.06,-.08,.08,.06], bencana: [-.09,-.11,.12,.09] }[sc];
+      var ml = EkoData.ACCURACY_COMPARISON.ml;
+      
+      var metrics = [
+        { label: "Potensi Exclusion Error", val: (ml.exclusionErr + adj[2] * 100).toFixed(1) + "%", color: "var(--danger)" },
+        { label: "Potensi Inclusion Error", val: (ml.inclusionErr + adj[3] * 100).toFixed(1) + "%", color: "var(--warning)" },
+        { label: "Akurasi Prediksi (F1)", val: (ml.f1 + adj[0]).toFixed(2), color: "var(--text)" },
+        { label: "Daya Beda Model (AUC)", val: (ml.auc + adj[1]).toFixed(2), color: "var(--text)" }
+      ];
+      
+      document.getElementById("metric-row-ml").innerHTML = metrics.map(function(m) {
+        return [
+          '<div class="metric-pill">',
+          '<div class="val" style="color:' + m.color + ';">' + m.val + '</div>',
+          '<div class="lbl">' + m.label + '</div>',
+          '</div>'
+        ].join("");
+      }).join("");
+    }
+
+    function renderDecileChart(sc) {
+      var dist = EkoData.DECILE_DIST[sc];
+      var labels = ["D1", "D2", "D3", "D4", "D5", "D6", "D7", "D8", "D9", "D10"];
+      var datasets = [
+        { data: dist.actual },
+        { data: dist.ml }
+      ];
+      var canvas = document.getElementById("decile-chart");
+      App.drawBarChart(canvas, labels, datasets, { colors: ["#9CA3AF", "#2563EB"] });
+    }
+
+    function renderCandidates(sc) {
+      // Get data and find anomalies/mismatches
+      var data = EkoData.generateHouseholds(App.SESSION.province || "JB", sc, sc === "normal" ? 10 : 25);
+      
+      // Filter candidates with large mismatch between ML decile and their actual/PMT decile
+      var candidates = data.filter(function(r) { return Math.abs(r.pmtDecile - r.mlDecile) >= 2 || r.isAnomaly; });
+      candidates.sort(function(a, b) { return Math.abs(b.pmtDecile - b.mlDecile) - Math.abs(a.pmtDecile - a.mlDecile); });
+      
+      var listHTML = candidates.slice(0, 15).map(function(c) {
+        var isExclusion = c.mlDecile <= 3 && c.pmtDecile > 3; // ML says poor, system says not
+        var statusCls = isExclusion ? "status-err" : "status-warn";
+        var statusTxt = isExclusion ? "Potensi Exclusion" : "Potensi Inclusion";
+        
+        return [
+          '<div class="shap-record-item" onclick="selectCandidate(\'' + c.id + '\', ' + isExclusion + ')">',
+          '<div class="rec-header">',
+          '<div class="rec-id">' + c.id + '</div>',
+          '<div class="rec-status ' + statusCls + '">' + statusTxt + '</div>',
+          '</div>',
+          '<div class="rec-details">',
+          'Tercatat Desil ' + c.pmtDecile + ' &rarr; Prediksi ML Desil ' + c.mlDecile + '<br>',
+          'Skor Keyakinan Model: ' + (c.confidence * 100).toFixed(0) + '%',
+          '</div>',
+          '</div>'
+        ].join("");
+      }).join("");
+
+      if (candidates.length === 0) listHTML = '<div style="padding:20px;text-align:center;color:var(--text-3);">Tidak ada anomali tinggi terdeteksi.</div>';
+      document.getElementById("candidate-list").innerHTML = listHTML;
+    }
+
+    function selectCandidate(id, isExclusion) {
+      document.querySelectorAll(".shap-record-item").forEach(function(el) { el.classList.remove("selected"); });
+      var evt = event;
+      if (evt && evt.currentTarget) evt.currentTarget.classList.add("selected");
+
+      document.getElementById("shap-placeholder").style.display = "none";
+      document.getElementById("shap-panel").style.display = "block";
+
+      document.getElementById("shap-record-info").innerHTML = [
+        '<div style="font-weight:700;margin-bottom:4px;font-size:.9rem;">Record: ' + id + '</div>',
+        '<div style="color:var(--text-2);line-height:1.6;">',
+        'Model mendeteksi anomali pada profil rumah tangga ini. Terdapat ketidaksesuaian antara kondisi aset fisik dan estimasi pengeluaran riil.',
+        isExclusion ? '<br><strong style="color:var(--danger);">Rekomendasi:</strong> Prioritaskan untuk verifikasi inklusi bansos.' : '<br><strong style="color:var(--warning);">Rekomendasi:</strong> Evaluasi ulang kelayakan.',
+        '</div>'
+      ].join("");
+
+      // Scramble SHAP slightly based on id to make it look dynamic
+      var seed = id.charCodeAt(id.length - 1);
+      var shapData = EkoData.SHAP_DEMO.map(function(s) {
+        var mod = (seed % 5) / 10 + 0.8;
+        return { feature: s.feature, value: s.value * mod * (seed % 2 === 0 ? 1 : -1) };
+      });
+      shapData.sort(function(a, b) { return Math.abs(b.value) - Math.abs(a.value); });
+
+      App.renderSHAP(document.getElementById("shap-bars"), shapData);
+    }
+  </script>
+</body>
+</html>

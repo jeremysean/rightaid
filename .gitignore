@@ -1,0 +1,26 @@
+# Build output
+.dist/
+dist/
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor directories
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+
+# Environment variables (jangan upload API keys!)
+.env
+.env.local
+.env.*.local
+
+# Markdown files (exclude all except README.md)
+*.md
+!README.md

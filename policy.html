@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Policy Brief - RightAid</title>
+  <meta name="description" content="Generator Policy Brief Otomatis berdasarkan analisis mis-targeting." />
+  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="css/style.css" />
+  <style>
+    @media print {
+      body > * { display: none !important; }
+      #print-area { display: block !important; }
+      #print-area { position: fixed; inset: 0; background: #fff; padding: 40px 56px; font-family: 'Georgia', serif; color: #111; }
+      #print-area h2 { font-size: 1.3rem; font-weight: 700; margin-bottom: 6px; }
+      #print-area h3 { font-size: 1rem; font-weight: 700; margin: 20px 0 6px; border-bottom: 1px solid #ddd; padding-bottom: 4px; }
+      #print-area p, #print-area li { font-size: .9rem; line-height: 1.75; }
+      #print-area ul { padding-left: 18px; }
+      #print-area .print-meta { font-size: .78rem; color: #555; margin-bottom: 20px; border-bottom: 2px solid #2563EB; padding-bottom: 10px; }
+      #print-area .print-footer { margin-top: 32px; font-size: .7rem; color: #999; text-align: center; border-top: 1px solid #ddd; padding-top: 10px; }
+    }
+    #print-area { display: none; }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <div id="sidebar-mount"></div>
+    <div class="main-content">
+      <div id="topbar-mount"></div>
+      <div class="page-body">
+
+        <div class="grid-2">
+          <!-- Configuration Panel -->
+          <div class="flex-col gap-4">
+            <div class="card">
+              <div class="card-header">
+                <div>
+                  <div class="card-title">Parameter Policy Brief</div>
+                  <div class="card-subtitle">Pilih konteks untuk menghasilkan rekomendasi kebijakan</div>
+                </div>
+              </div>
+              <div class="card-body">
+                <div class="form-group">
+                  <label class="form-label" for="prov-select">Provinsi Target</label>
+                  <select id="prov-select" class="form-control">
+                    <option value="">-- Memuat provinsi --</option>
+                  </select>
+                </div>
+                
+                <div class="form-group">
+                  <label class="form-label">Skenario Analisis</label>
+                  <div class="scenario-grid" style="grid-template-columns:1fr; gap:8px;">
+                    <div class="scenario-card" data-val="normal" onclick="selScen(this)">
+                      <div class="scenario-title">Kondisi Baseline</div>
+                      <div class="scenario-desc">Evaluasi akurasi targeting pada kondisi normal saat ini.</div>
+                    </div>
+                    <div class="scenario-card" data-val="phk" onclick="selScen(this)">
+                      <div class="scenario-title">Dampak PHK Massal</div>
+                      <div class="scenario-desc">Analisis dampak guncangan ekonomi pada sektor manufaktur.</div>
+                    </div>
+                    <div class="scenario-card" data-val="bencana" onclick="selScen(this)">
+                      <div class="scenario-title">Pasca-Bencana</div>
+                      <div class="scenario-desc">Analisis dampak perubahan kondisi hunian yang mendadak.</div>
+                    </div>
+                  </div>
+                </div>
+
+                <button class="btn btn-primary w-full" style="justify-content:center;height:44px;margin-top:10px;" onclick="generateBrief()" id="btn-generate">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                  <span>Generate Policy Brief</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Document Preview -->
+          <div class="card" style="display:flex;flex-direction:column;">
+            <div class="card-header" style="border-bottom:1px solid var(--border);padding-bottom:16px;">
+              <div>
+                <div class="card-title">Preview Dokumen</div>
+                <div class="card-subtitle">Dokumen otomatis menggunakan Azure AI Language</div>
+              </div>
+              <div style="display:flex;gap:8px;">
+                <button class="btn btn-outline btn-sm" id="btn-copy" onclick="copyText()">Salin Teks</button>
+                <button class="btn btn-secondary btn-sm" id="btn-print" onclick="printBrief()">Cetak / Simpan PDF</button>
+              </div>
+            </div>
+            <div class="card-body" style="flex:1;background:var(--bg);overflow-y:auto;max-height:600px;">
+              <div id="brief-empty" style="text-align:center;padding:80px 20px;color:var(--text-3);">
+                <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:.4;margin-bottom:16px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                <p>Pilih provinsi dan skenario, lalu klik "Generate Policy Brief" untuk menghasilkan rekomendasi.</p>
+              </div>
+              <div id="brief-loading" style="display:none;text-align:center;padding:80px 20px;">
+                <div class="spinner" style="margin:0 auto 16px;"></div>
+                <p style="font-size:.85rem;color:var(--text-2);">AI sedang menyusun narasi...</p>
+              </div>
+              <div id="brief-content" style="display:none;"></div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Hidden print area: only visible during window.print() -->
+  <div id="print-area"></div>
+
+  <div id="toast-container"></div>
+  <script src="js/data.js?v=2"></script>
+  <script src="js/app.js?v=2"></script>
+  <script>
+    var currentScen = "";
+
+    document.addEventListener("DOMContentLoaded", function() {
+      document.getElementById("sidebar-mount").innerHTML = App.buildSidebar("policy");
+      document.getElementById("topbar-mount").innerHTML = App.buildTopbar("Policy Brief Generator");
+
+      var sel = document.getElementById("prov-select");
+      sel.innerHTML = "";
+      EkoData.PROVINCES.forEach(function(p) {
+        var opt = document.createElement("option");
+        opt.value = p.id;
+        opt.textContent = p.name;
+        sel.appendChild(opt);
+      });
+
+      if (App.SESSION.province) sel.value = App.SESSION.province;
+      
+      var initScen = App.SESSION.scenario || "normal";
+      var cards = document.querySelectorAll('.scenario-card');
+      cards.forEach(function(c) {
+        if (c.getAttribute('data-val') === initScen) {
+          c.classList.add('selected');
+          currentScen = initScen;
+        }
+      });
+    });
+
+    function selScen(el) {
+      document.querySelectorAll('.scenario-card').forEach(function(c) { c.classList.remove('selected'); });
+      el.classList.add('selected');
+      currentScen = el.getAttribute('data-val');
+    }
+
+    var currentBriefText = "";
+
+    function copyText() {
+      if (!currentBriefText) {
+        App.showToast('Belum ada dokumen untuk disalin.', 'error');
+        return;
+      }
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(currentBriefText).then(function() {
+          App.showToast('Teks berhasil disalin ke clipboard.', 'success');
+        });
+      } else {
+        var ta = document.createElement('textarea');
+        ta.value = currentBriefText;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        App.showToast('Teks berhasil disalin ke clipboard.', 'success');
+      }
+    }
+
+    function printBrief() {
+      var el = document.getElementById('print-area');
+      if (!el || !el.innerHTML.trim()) {
+        App.showToast('Generate policy brief terlebih dahulu sebelum mencetak.', 'error');
+        return;
+      }
+      window.print();
+    }
+
+    async function generateBrief() {
+      var pid = document.getElementById("prov-select").value;
+      if (!pid || !currentScen) {
+        App.showToast("Pilih provinsi dan skenario terlebih dahulu.", "error");
+        return;
+      }
+
+      App.SESSION.province = pid;
+      App.SESSION.scenario = currentScen;
+      App.saveSession();
+
+      var prov = EkoData.PROVINCES.find(function(p) { return p.id === pid; }) || EkoData.PROVINCES[0];
+
+      document.getElementById("brief-empty").style.display = "none";
+      document.getElementById("brief-content").style.display = "none";
+      document.getElementById("brief-loading").style.display = "block";
+
+      var btn = document.getElementById("btn-generate");
+      btn.disabled = true;
+
+      await App.sleep(1500);
+
+      var template = EkoData.POLICY_TEMPLATES[currentScen];
+      var findings = template.findings.replace(/{province}/g, prov.name);
+      var demographics = template.demographics.replace(/{province}/g, prov.name);
+      var recommendations = template.recommendations.replace(/{province}/g, prov.name);
+
+      var recList = recommendations.split(/\d\.\s/).filter(Boolean).map(function(r) { return "<li>" + r + "</li>"; }).join("");
+      var dateStr = new Date().toLocaleDateString("id-ID", { day: 'numeric', month: 'long', year: 'numeric' });
+      var scenLabel = currentScen === "normal" ? "Baseline" : currentScen === "phk" ? "PHK Massal" : "Pasca-Bencana";
+
+      // Build plain text for clipboard
+      currentBriefText = [
+        template.title,
+        "Provinsi: " + prov.name + " | Tanggal Analisis: " + dateStr + " | Skenario: " + scenLabel,
+        "",
+        "1. Ringkasan Temuan Utama",
+        findings,
+        "",
+        "2. Profil Demografis Terdampak",
+        demographics,
+        "",
+        "3. Rekomendasi Tindak Lanjut",
+        recommendations,
+        "",
+        "Dokumen dihasilkan menggunakan RightAid ML-PMT Platform v1.0",
+        "Dicoding x Microsoft Elevate Datathon 2025"
+      ].join("\n");
+
+      var briefHTML = [
+        '<div class="brief-paper">',
+        '<h2>' + template.title + '</h2>',
+        '<p style="font-size:.8rem;color:var(--text-2);margin-bottom:24px;">',
+        '<strong>Provinsi:</strong> ' + prov.name + ' &nbsp;|&nbsp; ',
+        '<strong>Tanggal Analisis:</strong> ' + dateStr + ' &nbsp;|&nbsp; ',
+        '<strong>Skenario:</strong> ' + scenLabel,
+        '</p>',
+        '<h3>1. Ringkasan Temuan Utama</h3>',
+        '<p>' + findings + '</p>',
+        '<h3>2. Profil Demografis Terdampak</h3>',
+        '<p>' + demographics + '</p>',
+        '<h3>3. Rekomendasi Tindak Lanjut</h3>',
+        '<ul style="list-style:decimal;padding-left:18px;margin-bottom:12px;color:var(--text);">',
+        recList,
+        '</ul>',
+        '<div class="divider"></div>',
+        '<div style="font-size:.7rem;color:var(--text-3);text-align:center;">',
+        'Dokumen dihasilkan menggunakan RightAid ML-PMT Platform v1.0<br>',
+        'Dicoding \xD7 Microsoft Elevate Datathon 2025',
+        '</div>',
+        '</div>'
+      ].join("");
+
+      // Build clean print-area HTML
+      document.getElementById("print-area").innerHTML = [
+        '<h2>' + template.title + '</h2>',
+        '<div class="print-meta">Provinsi: ' + prov.name + ' &nbsp;|&nbsp; Tanggal: ' + dateStr + ' &nbsp;|&nbsp; Skenario: ' + scenLabel + '</div>',
+        '<h3>1. Ringkasan Temuan Utama</h3><p>' + findings + '</p>',
+        '<h3>2. Profil Demografis Terdampak</h3><p>' + demographics + '</p>',
+        '<h3>3. Rekomendasi Tindak Lanjut</h3>',
+        '<ul>' + recommendations.split(/\d\.\s/).filter(Boolean).map(function(r) { return '<li>' + r + '</li>'; }).join('') + '</ul>',
+        '<div class="print-footer">RightAid ML-PMT Platform v1.0 &nbsp;|&nbsp; Dicoding &times; Microsoft Elevate Datathon 2025 &nbsp;|&nbsp; ' + dateStr + '</div>'
+      ].join("");
+
+      document.getElementById("brief-loading").style.display = "none";
+      document.getElementById("brief-content").innerHTML = briefHTML;
+      document.getElementById("brief-content").style.display = "block";
+      btn.disabled = false;
+    }
+  </script>
+</body>
+</html>
