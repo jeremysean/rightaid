@@ -27,6 +27,25 @@ Platform ini menggabungkan dua kapabilitas utama:
 * **Data Science & ML**: NumPy, SciPy, pandas, scikit-learn, XGBoost, SHAP
 * **Cloud Services**: Azure Machine Learning, Azure AI Language, Azure Static Web Apps
 
+## Mode Operasi: Live vs Demo
+
+RightAid dapat berjalan dalam dua mode, dipilih secara otomatis berdasarkan konfigurasi backend:
+
+* **Mode Live** — frontend terhubung ke RightAid API (FastAPI). Login menggunakan JWT, dataset sintetis dibangun di server, dan inferensi model XGBoost + SHAP + policy brief (Azure OpenAI) berjalan secara nyata.
+* **Mode Demo** — bila tidak ada backend yang dikonfigurasi (atau backend tidak dapat dihubungi), frontend otomatis memakai *fallback* data sintetis lokal (`js/data.js`) sehingga prototipe tetap berfungsi penuh (mis. saat dideploy statis di Netlify). Indikator status koneksi (**Live** / **Mode Demo**) ditampilkan pada topbar setiap halaman.
+
+### Menghubungkan ke Backend
+
+Atur URL backend melalui salah satu cara berikut (diperiksa berurutan):
+
+1. Edit `js/config.js` &rarr; `window.RIGHTAID_CONFIG = { API_BASE: "https://your-backend" }`.
+2. Tambahkan query param `?api=https://your-backend` pada URL (otomatis tersimpan ke `localStorage`).
+3. Set `localStorage` key `rightaid_api_base` melalui console browser.
+
+Kosongkan `API_BASE` untuk memaksa Mode Demo. Backend repo & instruksi deployment tersedia terpisah (FastAPI di `backend/`).
+
+Kredensial demo: `guest@rightaid.id` / `guest123`.
+
 ## Cara Menjalankan Proyek (Frontend)
 
 Repositori ini difokuskan pada antarmuka pengguna (frontend) yang dibangun menggunakan file statis murni (HTML, CSS, JS). Anda dapat menjalankan prototipe ini di lingkungan lokal dengan salah satu cara berikut:
@@ -52,11 +71,12 @@ Jika Anda memiliki Node.js terinstal:
 
 ## Alur Penggunaan
 
-1. **Pilih Provinsi dan Konfigurasi**: Pilih provinsi target pada peta dan atur skenario simulasi (Kondisi Normal, PHK Massal, atau Pasca Bencana).
-2. **Generate Data**: Sistem akan memanggil backend untuk membangun ribuan data rumah tangga sintetis yang representatif dengan profil wilayah tersebut.
-3. **Jalankan Analisis**: Model AI akan melakukan inferensi untuk melihat perbandingan akurasi antara PMT konvensional dan Machine Learning.
-4. **Eksplorasi Interpretasi**: Klik pada baris data kandidat mis-targeting untuk melihat penjelasan logis di balik prediksi melalui visualisasi SHAP.
-5. **Buat Rekomendasi Kebijakan**: Klik tombol generate untuk menghasilkan laporan policy brief secara otomatis yang siap disalin untuk keperluan advokasi kebijakan.
+1. **Generate Dataset (Data Viewer)**: Pilih provinsi, skenario simulasi (Kondisi Normal, PHK Massal, atau Pasca-Bencana), tingkat anomali, dan jumlah rumah tangga, lalu klik **Generate Dataset**. Backend membangun populasi sintetis dan mengembalikan `session_id`; tabel rumah tangga ditampilkan dengan paginasi dan dapat diekspor ke CSV.
+2. **Jalankan Analisis (Analisis Model)**: Halaman ini menjalankan inferensi pada sesi aktif untuk membandingkan akurasi PMT konvensional vs Machine Learning — confusion matrix, metrik (F1/AUC/exclusion/inclusion error), distribusi desil, dan daftar kandidat mis-targeting prioritas.
+3. **Eksplorasi Interpretasi (SHAP)**: Klik baris kandidat mis-targeting untuk memuat penjelasan SHAP per-record langsung dari model, lengkap dengan probabilitas kelayakan dan kontribusi tiap fitur.
+4. **Buat Rekomendasi Kebijakan (Policy Brief)**: Hasilkan policy brief otomatis (Azure OpenAI dalam Mode Live, atau template dalam Mode Demo) yang siap disalin/dicetak untuk advokasi kebijakan.
+
+> Catatan: alur di atas berbagi satu `session_id` lintas halaman. Mode Demo mereplikasi seluruh alur secara lokal tanpa backend.
 
 ## Tim Pengembang
 

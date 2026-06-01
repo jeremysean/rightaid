@@ -90,27 +90,7 @@
               </div>
             </div>
             <div class="card-body">
-              <div class="model-compare">
-                <div class="model-col">
-                  <div class="model-label pmt">PMT Konvensional</div>
-                  <div class="model-metric"><span class="key">F1-Score</span><span class="val">0.71</span></div>
-                  <div class="model-metric"><span class="key">AUC-ROC</span><span class="val">0.74</span></div>
-                  <div class="model-metric"><span class="key">Exclusion Error</span><span class="val text-danger">28.4%</span></div>
-                  <div class="model-metric"><span class="key">Inclusion Error</span><span class="val text-warning">22.1%</span></div>
-                  <div class="model-metric"><span class="key">Presisi</span><span class="val">0.68</span></div>
-                  <div class="model-metric"><span class="key">Recall</span><span class="val">0.73</span></div>
-                </div>
-                <div class="vs-divider"><div class="vs-badge">VS</div></div>
-                <div class="model-col">
-                  <div class="model-label ml">ML-PMT RightAid</div>
-                  <div class="model-metric"><span class="key">F1-Score</span><span class="val text-success">0.88</span></div>
-                  <div class="model-metric"><span class="key">AUC-ROC</span><span class="val text-success">0.93</span></div>
-                  <div class="model-metric"><span class="key">Exclusion Error</span><span class="val text-success">14.7%</span></div>
-                  <div class="model-metric"><span class="key">Inclusion Error</span><span class="val text-success">11.3%</span></div>
-                  <div class="model-metric"><span class="key">Presisi</span><span class="val text-success">0.91</span></div>
-                  <div class="model-metric"><span class="key">Recall</span><span class="val text-success">0.86</span></div>
-                </div>
-              </div>
+              <div class="model-compare" id="model-compare"></div>
             </div>
           </div>
 
@@ -165,15 +145,37 @@
     </div>
   </div>
   <div id="toast-container"></div>
-  <script src="js/data.js?v=2"></script>
-  <script src="js/app.js?v=2"></script>
+  <script src="js/data.js?v=3"></script>
+  <script src="js/app.js?v=3"></script>
+  <script src="js/config.js?v=3"></script>
+  <script src="js/api.js?v=3"></script>
   <script>
   document.addEventListener("DOMContentLoaded", function() {
     // Mount sidebar & topbar
     document.getElementById("sidebar-mount").innerHTML = App.buildSidebar("dashboard");
     document.getElementById("topbar-mount").innerHTML = App.buildTopbar("Beranda");
+    Api.updateConnChip();
 
-    const { NATIONAL_STATS, PROVINCES, MONTHLY_TREND, ACCURACY_COMPARISON } = EkoData;
+    loadDashboard();
+    renderStaticPanels();
+  });
+
+  async function loadDashboard() {
+    const icons = [
+      `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`,
+      `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="m19 9-5 5-4-4-3 3"/></svg>`,
+      `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`,
+      `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>`,
+    ];
+
+    // Skeleton placeholders while loading
+    document.getElementById("stat-grid").innerHTML = Array(4).fill(
+      '<div class="stat-card"><div class="skeleton skeleton-row" style="width:60%"></div><div class="skeleton skeleton-row" style="width:80%;height:24px"></div></div>'
+    ).join("");
+
+    const [NATIONAL_STATS, trend, comparison, provinces] = await Promise.all([
+      Api.getNationalStats(), Api.getTrend(), Api.getModelComparison(), Api.getProvinces()
+    ]);
 
     // Stat cards
     const stats = [
@@ -181,12 +183,6 @@
       { label: "Tingkat Kemiskinan", value: NATIONAL_STATS.povertyRate, delta: "-0.17 poin dari Mar 2024", dir: "down" },
       { label: "Rasio Gini", value: NATIONAL_STATS.giniCoef, delta: "+0.002 dari Mar 2024", dir: "up" },
       { label: "Anggaran Bansos 2024", value: NATIONAL_STATS.socialBudget, delta: "+12.3% dari 2023", dir: "up" },
-    ];
-    const icons = [
-      `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`,
-      `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="m19 9-5 5-4-4-3 3"/></svg>`,
-      `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`,
-      `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>`,
     ];
     document.getElementById("stat-grid").innerHTML = stats.map((s, i) => `
       <div class="stat-card">
@@ -201,13 +197,13 @@
 
     // Trend chart - drawLineChart auto-handles responsive sizing via ResizeObserver
     const trendCanvas = document.getElementById("trend-chart");
-    App.drawLineChart(trendCanvas, MONTHLY_TREND.map(d => d.month), [
-      { data: MONTHLY_TREND.map(d => d.exclusion) },
-      { data: MONTHLY_TREND.map(d => d.inclusion) },
+    App.drawLineChart(trendCanvas, trend.map(d => d.month), [
+      { data: trend.map(d => d.exclusion) },
+      { data: trend.map(d => d.inclusion) },
     ], { colors: ["#DC2626", "#2563EB"] });
 
     // Province ranking
-    const ranked = [...PROVINCES].sort((a, b) => b.povertyRate - a.povertyRate).slice(0, 6);
+    const ranked = [...provinces].sort((a, b) => b.povertyRate - a.povertyRate).slice(0, 6);
     document.getElementById("province-ranking").innerHTML = ranked.map((p, i) => `
       <div class="province-row">
         <div class="province-rank">${i+1}</div>
@@ -219,6 +215,30 @@
       </div>
     `).join("");
 
+    // Model comparison (live)
+    renderModelCompare(comparison);
+  }
+
+  function renderModelCompare(cmp) {
+    const pmt = cmp.pmt, ml = cmp.ml;
+    const rows = [
+      { key: "F1-Score", pmt: (+pmt.f1).toFixed(2), ml: (+ml.f1).toFixed(2) },
+      { key: "AUC-ROC", pmt: (+pmt.auc).toFixed(2), ml: (+ml.auc).toFixed(2) },
+      { key: "Exclusion Error", pmt: (+pmt.exclusionErr).toFixed(1) + "%", ml: (+ml.exclusionErr).toFixed(1) + "%" },
+      { key: "Inclusion Error", pmt: (+pmt.inclusionErr).toFixed(1) + "%", ml: (+ml.inclusionErr).toFixed(1) + "%" },
+    ];
+    const col = (label, cls, valGetter, accent) => `
+      <div class="model-col">
+        <div class="model-label ${cls}">${label}</div>
+        ${rows.map(r => `<div class="model-metric"><span class="key">${r.key}</span><span class="val ${accent ? 'text-success' : ''}">${valGetter(r)}</span></div>`).join("")}
+      </div>`;
+    document.getElementById("model-compare").innerHTML =
+      col("PMT Konvensional", "pmt", r => r.pmt, false) +
+      '<div class="vs-divider"><div class="vs-badge">VS</div></div>' +
+      col("ML-PMT RightAid", "ml", r => r.ml, true);
+  }
+
+  function renderStaticPanels() {
     // Key insights
     const insights = [
       { icon: "danger", color: "#FEE2E2", iconColor: "#DC2626", title: "Exclusion error Papua Pegunungan tertinggi", text: "32.97% tingkat kemiskinan dengan 64.3% rumah tangga tanpa akses listrik - anomali terbanyak terdeteksi model." },
@@ -261,8 +281,7 @@
         <div class="progress-bar"><div class="progress-fill ${d.pct < 50 ? 'red' : d.pct < 80 ? 'yellow' : 'green'}" style="width:${d.pct}%"></div></div>
       </div>
     `).join("");
-  
-  });
+  }
 </script>
 </body>
 </html>

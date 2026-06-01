@@ -53,6 +53,19 @@
         <!-- Metric overview -->
         <div id="metric-row-ml" class="metric-row"></div>
 
+        <!-- Confusion matrix comparison -->
+        <div class="card mb-6">
+          <div class="card-header">
+            <div>
+              <div class="card-title">Confusion Matrix &mdash; PMT Konvensional vs ML-PMT</div>
+              <div class="card-subtitle">Klasifikasi kelayakan bansos (bottom-40) terhadap kondisi aktual DTSEN</div>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="cm-wrap" id="cm-wrap"></div>
+          </div>
+        </div>
+
         <!-- Row 1: Decile distribution chart -->
         <div class="card mb-6">
           <div class="card-header">
@@ -116,15 +129,24 @@
   </div>
   
   <div id="toast-container"></div>
-  <script src="js/data.js?v=2"></script>
-  <script src="js/app.js?v=2"></script>
+  <script src="js/data.js?v=3"></script>
+  <script src="js/app.js?v=3"></script>
+  <script src="js/config.js?v=3"></script>
+  <script src="js/api.js?v=3"></script>
   <script>
+    var lastPrediction = null;
+
     document.addEventListener("DOMContentLoaded", function() {
       document.getElementById("sidebar-mount").innerHTML = App.buildSidebar("analysis");
       document.getElementById("topbar-mount").innerHTML = App.buildTopbar("Analisis Targeting");
+      Api.updateConnChip();
 
       window.currentScenario = App.SESSION.scenario || "normal";
-      renderAll();
+      // Sync the active scenario tab with the saved scenario
+      document.querySelectorAll(".tab-btn").forEach(function(b) {
+        b.classList.toggle("active", b.getAttribute("onclick").indexOf("'" + window.currentScenario + "'") >= 0);
+      });
+      runAnalysis();
     });
 
     const scenDescMap = {
@@ -136,110 +158,136 @@
     function setScenario(sc, el) {
       window.currentScenario = sc;
       App.SESSION.scenario = sc;
+      // A new scenario requires a fresh dataset session on the backend.
+      App.SESSION.session_id = null;
       App.saveSession();
       document.querySelectorAll(".tab-btn").forEach(function(b) { b.classList.remove("active"); });
       el.classList.add("active");
-      renderAll();
+      runAnalysis();
     }
 
-    function renderAll() {
+    function resetShapPanel() {
+      document.getElementById("shap-placeholder").style.display = "block";
+      document.getElementById("shap-panel").style.display = "none";
+    }
+
+    async function runAnalysis() {
       var sc = window.currentScenario;
       var d = scenDescMap[sc];
       document.getElementById("scenario-badge").innerHTML = '<span class="badge ' + d.cls + '">' + d.label + '</span>';
-      
-      renderMetrics(sc);
-      renderDecileChart(sc);
-      renderCandidates(sc);
+      resetShapPanel();
+      document.getElementById("candidate-list").innerHTML =
+        '<div style="padding:20px;color:var(--text-3);"><div class="skeleton skeleton-row" style="width:90%"></div><div class="skeleton skeleton-row" style="width:75%"></div><div class="skeleton skeleton-row" style="width:85%"></div></div>';
+      document.getElementById("cm-wrap").innerHTML =
+        '<div class="skeleton" style="height:120px"></div><div class="skeleton" style="height:120px"></div>';
+
+      try {
+        var sid = await Api.ensureSession();
+        var pred = await Api.predict(sid, sc);
+        lastPrediction = pred;
+        renderMetrics(pred.metrics);
+        renderConfusion(pred.confusion_matrix_pmt, pred.confusion_matrix);
+        renderDecileChart(pred.decile_dist);
+        renderCandidates(pred.mistargeting_candidates);
+      } catch (e) {
+        App.showToast("Gagal menjalankan analisis model.", "error");
+        document.getElementById("candidate-list").innerHTML =
+          '<div style="padding:20px;text-align:center;color:var(--text-3);">Analisis gagal. Coba lagi.</div>';
+      }
     }
 
-    function renderMetrics(sc) {
-      var adj = { normal: [0,0,0,0], phk: [-.06,-.08,.08,.06], bencana: [-.09,-.11,.12,.09] }[sc];
-      var ml = EkoData.ACCURACY_COMPARISON.ml;
-      
+    function renderMetrics(m) {
       var metrics = [
-        { label: "Potensi Exclusion Error", val: (ml.exclusionErr + adj[2] * 100).toFixed(1) + "%", color: "var(--danger)" },
-        { label: "Potensi Inclusion Error", val: (ml.inclusionErr + adj[3] * 100).toFixed(1) + "%", color: "var(--warning)" },
-        { label: "Akurasi Prediksi (F1)", val: (ml.f1 + adj[0]).toFixed(2), color: "var(--text)" },
-        { label: "Daya Beda Model (AUC)", val: (ml.auc + adj[1]).toFixed(2), color: "var(--text)" }
+        { label: "Potensi Exclusion Error", val: (+m.exclusionErr).toFixed(1) + "%", color: "var(--danger)" },
+        { label: "Potensi Inclusion Error", val: (+m.inclusionErr).toFixed(1) + "%", color: "var(--warning)" },
+        { label: "Akurasi Prediksi (F1)", val: (+m.f1).toFixed(2), color: "var(--text)" },
+        { label: "Daya Beda Model (AUC)", val: (+m.auc).toFixed(2), color: "var(--text)" }
       ];
-      
       document.getElementById("metric-row-ml").innerHTML = metrics.map(function(m) {
-        return [
-          '<div class="metric-pill">',
-          '<div class="val" style="color:' + m.color + ';">' + m.val + '</div>',
-          '<div class="lbl">' + m.label + '</div>',
-          '</div>'
-        ].join("");
+        return '<div class="metric-pill"><div class="val" style="color:' + m.color + ';">' + m.val + '</div><div class="lbl">' + m.label + '</div></div>';
       }).join("");
     }
 
-    function renderDecileChart(sc) {
-      var dist = EkoData.DECILE_DIST[sc];
-      var labels = ["D1", "D2", "D3", "D4", "D5", "D6", "D7", "D8", "D9", "D10"];
-      var datasets = [
-        { data: dist.actual },
-        { data: dist.ml }
-      ];
-      var canvas = document.getElementById("decile-chart");
-      App.drawBarChart(canvas, labels, datasets, { colors: ["#9CA3AF", "#2563EB"] });
+    function cmCard(title, cls, cm) {
+      var cell = function(klass, n, lbl) {
+        return '<div class="cm-cell ' + klass + '"><div class="cm-n">' + App.fmtNum(n) + '</div><div class="cm-l">' + lbl + '</div></div>';
+      };
+      return [
+        '<div class="cm-card">',
+        '<h4 class="' + cls + '">' + title + '</h4>',
+        '<div class="cm-grid">',
+        cell("cm-tp", cm.tp, "True Positive (Tepat Sasaran)"),
+        cell("cm-fp", cm.fp, "False Positive (Inclusion Err)"),
+        cell("cm-fn", cm.fn, "False Negative (Exclusion Err)"),
+        cell("cm-tn", cm.tn, "True Negative (Tepat Non-Sasaran)"),
+        '</div></div>'
+      ].join("");
     }
 
-    function renderCandidates(sc) {
-      // Get data and find anomalies/mismatches
-      var data = EkoData.generateHouseholds(App.SESSION.province || "JB", sc, sc === "normal" ? 10 : 25);
-      
-      // Filter candidates with large mismatch between ML decile and their actual/PMT decile
-      var candidates = data.filter(function(r) { return Math.abs(r.pmtDecile - r.mlDecile) >= 2 || r.isAnomaly; });
-      candidates.sort(function(a, b) { return Math.abs(b.pmtDecile - b.mlDecile) - Math.abs(a.pmtDecile - a.mlDecile); });
-      
-      var listHTML = candidates.slice(0, 15).map(function(c) {
-        var isExclusion = c.mlDecile <= 3 && c.pmtDecile > 3; // ML says poor, system says not
+    function renderConfusion(pmt, ml) {
+      document.getElementById("cm-wrap").innerHTML =
+        cmCard("PMT Konvensional", "pmt", pmt) + cmCard("ML-PMT RightAid", "ml", ml);
+    }
+
+    function renderDecileChart(dist) {
+      var labels = ["D1", "D2", "D3", "D4", "D5", "D6", "D7", "D8", "D9", "D10"];
+      App.drawBarChart(document.getElementById("decile-chart"), labels,
+        [{ data: dist.actual }, { data: dist.ml }], { colors: ["#9CA3AF", "#2563EB"] });
+    }
+
+    function renderCandidates(candidates) {
+      candidates = candidates || [];
+      if (!candidates.length) {
+        document.getElementById("candidate-list").innerHTML =
+          '<div style="padding:20px;text-align:center;color:var(--text-3);">Tidak ada anomali tinggi terdeteksi.</div>';
+        return;
+      }
+      var listHTML = candidates.slice(0, 20).map(function(c) {
+        // Eligible by ML but excluded by PMT → exclusion risk.
+        var isExclusion = c.mlEligible === 1 && c.pmtDecile > 4;
         var statusCls = isExclusion ? "status-err" : "status-warn";
         var statusTxt = isExclusion ? "Potensi Exclusion" : "Potensi Inclusion";
-        
         return [
           '<div class="shap-record-item" onclick="selectCandidate(\'' + c.id + '\', ' + isExclusion + ')">',
-          '<div class="rec-header">',
-          '<div class="rec-id">' + c.id + '</div>',
-          '<div class="rec-status ' + statusCls + '">' + statusTxt + '</div>',
-          '</div>',
+          '<div class="rec-header"><div class="rec-id">' + c.id + '</div><div class="rec-status ' + statusCls + '">' + statusTxt + '</div></div>',
           '<div class="rec-details">',
-          'Tercatat Desil ' + c.pmtDecile + ' &rarr; Prediksi ML Desil ' + c.mlDecile + '<br>',
-          'Skor Keyakinan Model: ' + (c.confidence * 100).toFixed(0) + '%',
-          '</div>',
-          '</div>'
+          c.kecamatan + ' &middot; Desil PMT ' + c.pmtDecile + ' vs Aktual ' + c.actualDecile + '<br>',
+          'Keyakinan Model: ' + (c.confidence * 100).toFixed(0) + '%' + (c.isAnomaly ? ' &middot; <span style="color:var(--danger);font-weight:700;">Anomali</span>' : ''),
+          '</div></div>'
         ].join("");
       }).join("");
-
-      if (candidates.length === 0) listHTML = '<div style="padding:20px;text-align:center;color:var(--text-3);">Tidak ada anomali tinggi terdeteksi.</div>';
       document.getElementById("candidate-list").innerHTML = listHTML;
     }
 
-    function selectCandidate(id, isExclusion) {
+    async function selectCandidate(id, isExclusion) {
       document.querySelectorAll(".shap-record-item").forEach(function(el) { el.classList.remove("selected"); });
-      var evt = event;
-      if (evt && evt.currentTarget) evt.currentTarget.classList.add("selected");
+      if (event && event.currentTarget) event.currentTarget.classList.add("selected");
 
       document.getElementById("shap-placeholder").style.display = "none";
       document.getElementById("shap-panel").style.display = "block";
+      document.getElementById("shap-bars").innerHTML =
+        '<div class="skeleton skeleton-row" style="width:90%"></div><div class="skeleton skeleton-row" style="width:70%"></div><div class="skeleton skeleton-row" style="width:80%"></div>';
 
+      var shap;
+      try {
+        shap = await Api.getShap(App.SESSION.session_id, id);
+      } catch (e) {
+        App.showToast("Gagal memuat penjelasan SHAP.", "error");
+        return;
+      }
+
+      var eligTxt = shap.eligible === 1
+        ? '<strong style="color:var(--danger);">Layak Bansos</strong> &mdash; prioritaskan verifikasi inklusi.'
+        : '<strong style="color:var(--warning);">Tidak Layak</strong> &mdash; evaluasi ulang kelayakan.';
       document.getElementById("shap-record-info").innerHTML = [
-        '<div style="font-weight:700;margin-bottom:4px;font-size:.9rem;">Record: ' + id + '</div>',
+        '<div style="font-weight:700;margin-bottom:4px;font-size:.9rem;">Record: ' + shap.record_id + '</div>',
         '<div style="color:var(--text-2);line-height:1.6;">',
-        'Model mendeteksi anomali pada profil rumah tangga ini. Terdapat ketidaksesuaian antara kondisi aset fisik dan estimasi pengeluaran riil.',
-        isExclusion ? '<br><strong style="color:var(--danger);">Rekomendasi:</strong> Prioritaskan untuk verifikasi inklusi bansos.' : '<br><strong style="color:var(--warning);">Rekomendasi:</strong> Evaluasi ulang kelayakan.',
+        'Probabilitas kelayakan model: <strong>' + (shap.prediction * 100).toFixed(1) + '%</strong>. ',
+        'Prediksi: ' + eligTxt,
         '</div>'
       ].join("");
 
-      // Scramble SHAP slightly based on id to make it look dynamic
-      var seed = id.charCodeAt(id.length - 1);
-      var shapData = EkoData.SHAP_DEMO.map(function(s) {
-        var mod = (seed % 5) / 10 + 0.8;
-        return { feature: s.feature, value: s.value * mod * (seed % 2 === 0 ? 1 : -1) };
-      });
-      shapData.sort(function(a, b) { return Math.abs(b.value) - Math.abs(a.value); });
-
-      App.renderSHAP(document.getElementById("shap-bars"), shapData);
+      App.renderSHAP(document.getElementById("shap-bars"), shap.features);
     }
   </script>
 </body>

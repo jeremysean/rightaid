@@ -94,7 +94,7 @@
         <form id="login-form" onsubmit="handleLogin(event)">
           <div class="form-group">
             <label class="form-label" for="email">Email</label>
-            <input id="email" class="form-control" type="email" placeholder="nama@instansi.go.id" value="guest@rightaid" autocomplete="email" required />
+            <input id="email" class="form-control" type="email" placeholder="nama@instansi.go.id" value="guest@rightaid.id" autocomplete="email" required />
           </div>
           <div class="form-group">
             <label class="form-label" for="password">Password</label>
@@ -122,8 +122,10 @@
   </div>
 
   <div id="toast-container"></div>
-  <script src="js/data.js?v=2"></script>
-  <script src="js/app.js?v=2"></script>
+  <script src="js/data.js?v=3"></script>
+  <script src="js/app.js?v=3"></script>
+  <script src="js/config.js?v=3"></script>
+  <script src="js/api.js?v=3"></script>
   <script>
     function togglePwd() {
       const inp = document.getElementById("password");
@@ -140,17 +142,21 @@
       const btnText = document.getElementById("btn-text");
 
       err.classList.remove("show");
-
-      // Show loading
       btn.disabled = true;
       btnText.textContent = "Memproses...";
       spinner.style.display = "block";
 
-      await App.sleep(900);
+      let result;
+      try {
+        result = await Api.login(email, pwd);
+      } catch (ex) {
+        result = { ok: false, error: "network" };
+      }
 
-      // Validate credentials
-      const validEmails = ["guest@rightaid", "analis@kemensos.go.id"];
-      if (!validEmails.includes(email) || pwd !== "guest123") {
+      if (!result.ok) {
+        err.textContent = result.error === "network"
+          ? "Tidak dapat terhubung ke server. Coba lagi."
+          : "Email atau password salah.";
         err.classList.add("show");
         btn.disabled = false;
         btnText.textContent = "Masuk";
@@ -158,15 +164,20 @@
         return;
       }
 
-      // Set session
-      const nameMap = { "guest@rightaid": "Analis Kebijakan", "analis@kemensos.go.id": "Dr. Ratna Dewi" };
-      App.SESSION.user = { name: nameMap[email] || "Analis Kebijakan", role: "Kemensos RI", email };
+      // Establish a fresh session for the logged-in user.
+      App.SESSION.user = result.user;
+      App.SESSION.session_id = null;       // reset any prior dataset session
       App.saveSession();
 
       App.showToast("Login berhasil. Selamat datang!", "success");
-      await App.sleep(600);
+      await App.sleep(500);
       App.goTo("dashboard.html");
     }
+
+    // Reflect backend availability on the login screen (optional hint).
+    document.addEventListener("DOMContentLoaded", function () {
+      if (window.Api && Api.enabled) Api.checkHealth();
+    });
   </script>
 </body>
 </html>
