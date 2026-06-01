@@ -5,6 +5,8 @@ var SESSION = {
   province: null,
   scenario: "normal",
   anomalyPct: 15,
+  sampleN: 5000,
+  session_id: null,
   generated: false
 };
 
@@ -95,9 +97,16 @@ function buildTopbar(title, actions) {
     '<div class="topbar-title">' + title + '</div>',
     '</div>',
     '<div class="topbar-actions">' + actions,
-    '<button class="btn btn-secondary btn-sm" onclick="goTo(\'index.html\')">' + iconLogout + ' Logout</button>',
+    '<span id="conn-chip" class="conn-chip demo" title="Status koneksi backend">Mode Demo</span>',
+    '<button class="btn btn-secondary btn-sm" onclick="handleLogout()">' + iconLogout + ' Logout</button>',
     '</div></header>'
   ].join("");
+}
+
+function handleLogout() {
+  try { if (window.Api) Api.logout(); } catch (e) {}
+  try { sessionStorage.removeItem("rightaid_session"); } catch (e) {}
+  goTo("index.html");
 }
 
 function injectToastContainer() {
@@ -266,6 +275,10 @@ loadSession();
 
 document.addEventListener("DOMContentLoaded", function() {
   injectToastContainer();
+  if (window.Api) {
+    Api.updateConnChip();
+    Api.init();
+  }
 });
 
 window.App = {

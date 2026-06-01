@@ -107,33 +107,36 @@
   <div id="print-area"></div>
 
   <div id="toast-container"></div>
-  <script src="js/data.js?v=2"></script>
-  <script src="js/app.js?v=2"></script>
+  <script src="js/data.js?v=3"></script>
+  <script src="js/app.js?v=3"></script>
+  <script src="js/config.js?v=3"></script>
+  <script src="js/api.js?v=3"></script>
   <script>
     var currentScen = "";
+    var currentBriefText = "";
 
     document.addEventListener("DOMContentLoaded", function() {
       document.getElementById("sidebar-mount").innerHTML = App.buildSidebar("policy");
       document.getElementById("topbar-mount").innerHTML = App.buildTopbar("Policy Brief Generator");
+      Api.updateConnChip();
 
-      var sel = document.getElementById("prov-select");
-      sel.innerHTML = "";
-      EkoData.PROVINCES.forEach(function(p) {
-        var opt = document.createElement("option");
-        opt.value = p.id;
-        opt.textContent = p.name;
-        sel.appendChild(opt);
+      Api.getProvinces().then(function(list) {
+        var sel = document.getElementById("prov-select");
+        sel.innerHTML = "";
+        list.forEach(function(p) {
+          var opt = document.createElement("option");
+          opt.value = p.id; opt.textContent = p.name;
+          sel.appendChild(opt);
+        });
+        var ids = list.map(function(p){ return p.id; });
+        var pid = (App.SESSION.province && ids.indexOf(App.SESSION.province) >= 0)
+          ? App.SESSION.province : (list[0] && list[0].id);
+        sel.value = pid;
       });
 
-      if (App.SESSION.province) sel.value = App.SESSION.province;
-      
       var initScen = App.SESSION.scenario || "normal";
-      var cards = document.querySelectorAll('.scenario-card');
-      cards.forEach(function(c) {
-        if (c.getAttribute('data-val') === initScen) {
-          c.classList.add('selected');
-          currentScen = initScen;
-        }
+      document.querySelectorAll('.scenario-card').forEach(function(c) {
+        if (c.getAttribute('data-val') === initScen) { c.classList.add('selected'); currentScen = initScen; }
       });
     });
 
@@ -143,13 +146,8 @@
       currentScen = el.getAttribute('data-val');
     }
 
-    var currentBriefText = "";
-
     function copyText() {
-      if (!currentBriefText) {
-        App.showToast('Belum ada dokumen untuk disalin.', 'error');
-        return;
-      }
+      if (!currentBriefText) { App.showToast('Belum ada dokumen untuk disalin.', 'error'); return; }
       if (navigator.clipboard) {
         navigator.clipboard.writeText(currentBriefText).then(function() {
           App.showToast('Teks berhasil disalin ke clipboard.', 'success');
@@ -157,10 +155,8 @@
       } else {
         var ta = document.createElement('textarea');
         ta.value = currentBriefText;
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand('copy');
-        document.body.removeChild(ta);
+        document.body.appendChild(ta); ta.select();
+        document.execCommand('copy'); document.body.removeChild(ta);
         App.showToast('Teks berhasil disalin ke clipboard.', 'success');
       }
     }
@@ -174,6 +170,31 @@
       window.print();
     }
 
+    function esc(s) {
+      return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+
+    // Convert free-form brief text (with numbered / uppercase headings) into HTML.
+    function formatBrief(content) {
+      var lines = content.replace(/\r/g, "").split("\n");
+      var html = [], buf = [];
+      var flush = function() {
+        if (buf.length) { html.push('<p>' + buf.join(" ") + '</p>'); buf = []; }
+      };
+      lines.forEach(function(raw) {
+        var line = raw.trim();
+        if (!line) { flush(); return; }
+        // Markdown-style or numbered/uppercase headings
+        var m = line.replace(/^#+\s*/, "").replace(/\*\*/g, "");
+        var isHeading = /^\d+\.\s+\S/.test(m) || (m === m.toUpperCase() && m.length < 70 && /[A-Z]/.test(m));
+        if (isHeading) { flush(); html.push('<h3>' + esc(m) + '</h3>'); }
+        else if (/^[-*]\s+/.test(line)) { flush(); html.push('<p style="margin-left:14px;">&bull; ' + esc(line.replace(/^[-*]\s+/, "")) + '</p>'); }
+        else { buf.push(esc(line.replace(/\*\*/g, ""))); }
+      });
+      flush();
+      return html.join("");
+    }
+
     async function generateBrief() {
       var pid = document.getElementById("prov-select").value;
       if (!pid || !currentScen) {
@@ -181,85 +202,70 @@
         return;
       }
 
+      // Selecting a new province/scenario invalidates any prior dataset session.
+      if (App.SESSION.province !== pid || App.SESSION.scenario !== currentScen) {
+        App.SESSION.session_id = null;
+      }
       App.SESSION.province = pid;
       App.SESSION.scenario = currentScen;
       App.saveSession();
 
-      var prov = EkoData.PROVINCES.find(function(p) { return p.id === pid; }) || EkoData.PROVINCES[0];
+      var provName = pid;
+      var p = EkoData.PROVINCES.filter(function(x){ return x.id === pid; })[0];
+      if (p) provName = p.name; else provName = pid;
 
       document.getElementById("brief-empty").style.display = "none";
       document.getElementById("brief-content").style.display = "none";
       document.getElementById("brief-loading").style.display = "block";
-
       var btn = document.getElementById("btn-generate");
       btn.disabled = true;
 
-      await App.sleep(1500);
+      var result;
+      try {
+        var sid = await Api.ensureSession();
+        result = await Api.getPolicyBrief(pid, currentScen, sid);
+      } catch (e) {
+        document.getElementById("brief-loading").style.display = "none";
+        document.getElementById("brief-empty").style.display = "block";
+        App.showToast("Gagal menghasilkan policy brief.", "error");
+        btn.disabled = false;
+        return;
+      }
 
-      var template = EkoData.POLICY_TEMPLATES[currentScen];
-      var findings = template.findings.replace(/{province}/g, prov.name);
-      var demographics = template.demographics.replace(/{province}/g, prov.name);
-      var recommendations = template.recommendations.replace(/{province}/g, prov.name);
-
-      var recList = recommendations.split(/\d\.\s/).filter(Boolean).map(function(r) { return "<li>" + r + "</li>"; }).join("");
       var dateStr = new Date().toLocaleDateString("id-ID", { day: 'numeric', month: 'long', year: 'numeric' });
       var scenLabel = currentScen === "normal" ? "Baseline" : currentScen === "phk" ? "PHK Massal" : "Pasca-Bencana";
+      var bodyHTML = formatBrief(result.content);
 
-      // Build plain text for clipboard
       currentBriefText = [
-        template.title,
-        "Provinsi: " + prov.name + " | Tanggal Analisis: " + dateStr + " | Skenario: " + scenLabel,
-        "",
-        "1. Ringkasan Temuan Utama",
-        findings,
-        "",
-        "2. Profil Demografis Terdampak",
-        demographics,
-        "",
-        "3. Rekomendasi Tindak Lanjut",
-        recommendations,
-        "",
+        result.title,
+        "Provinsi: " + provName + " | Tanggal Analisis: " + dateStr + " | Skenario: " + scenLabel,
+        "", result.content, "",
         "Dokumen dihasilkan menggunakan RightAid ML-PMT Platform v1.0",
         "Dicoding x Microsoft Elevate Datathon 2025"
       ].join("\n");
 
-      var briefHTML = [
+      var meta = '<p style="font-size:.8rem;color:var(--text-2);margin-bottom:24px;"><strong>Provinsi:</strong> ' +
+        esc(provName) + ' &nbsp;|&nbsp; <strong>Tanggal Analisis:</strong> ' + dateStr +
+        ' &nbsp;|&nbsp; <strong>Skenario:</strong> ' + scenLabel + '</p>';
+
+      document.getElementById("brief-content").innerHTML = [
         '<div class="brief-paper">',
-        '<h2>' + template.title + '</h2>',
-        '<p style="font-size:.8rem;color:var(--text-2);margin-bottom:24px;">',
-        '<strong>Provinsi:</strong> ' + prov.name + ' &nbsp;|&nbsp; ',
-        '<strong>Tanggal Analisis:</strong> ' + dateStr + ' &nbsp;|&nbsp; ',
-        '<strong>Skenario:</strong> ' + scenLabel,
-        '</p>',
-        '<h3>1. Ringkasan Temuan Utama</h3>',
-        '<p>' + findings + '</p>',
-        '<h3>2. Profil Demografis Terdampak</h3>',
-        '<p>' + demographics + '</p>',
-        '<h3>3. Rekomendasi Tindak Lanjut</h3>',
-        '<ul style="list-style:decimal;padding-left:18px;margin-bottom:12px;color:var(--text);">',
-        recList,
-        '</ul>',
+        '<h2>' + esc(result.title) + '</h2>', meta, bodyHTML,
         '<div class="divider"></div>',
         '<div style="font-size:.7rem;color:var(--text-3);text-align:center;">',
         'Dokumen dihasilkan menggunakan RightAid ML-PMT Platform v1.0<br>',
         'Dicoding \xD7 Microsoft Elevate Datathon 2025',
-        '</div>',
-        '</div>'
+        '</div></div>'
       ].join("");
 
-      // Build clean print-area HTML
       document.getElementById("print-area").innerHTML = [
-        '<h2>' + template.title + '</h2>',
-        '<div class="print-meta">Provinsi: ' + prov.name + ' &nbsp;|&nbsp; Tanggal: ' + dateStr + ' &nbsp;|&nbsp; Skenario: ' + scenLabel + '</div>',
-        '<h3>1. Ringkasan Temuan Utama</h3><p>' + findings + '</p>',
-        '<h3>2. Profil Demografis Terdampak</h3><p>' + demographics + '</p>',
-        '<h3>3. Rekomendasi Tindak Lanjut</h3>',
-        '<ul>' + recommendations.split(/\d\.\s/).filter(Boolean).map(function(r) { return '<li>' + r + '</li>'; }).join('') + '</ul>',
+        '<h2>' + esc(result.title) + '</h2>',
+        '<div class="print-meta">Provinsi: ' + esc(provName) + ' &nbsp;|&nbsp; Tanggal: ' + dateStr + ' &nbsp;|&nbsp; Skenario: ' + scenLabel + '</div>',
+        bodyHTML,
         '<div class="print-footer">RightAid ML-PMT Platform v1.0 &nbsp;|&nbsp; Dicoding &times; Microsoft Elevate Datathon 2025 &nbsp;|&nbsp; ' + dateStr + '</div>'
       ].join("");
 
       document.getElementById("brief-loading").style.display = "none";
-      document.getElementById("brief-content").innerHTML = briefHTML;
       document.getElementById("brief-content").style.display = "block";
       btn.disabled = false;
     }

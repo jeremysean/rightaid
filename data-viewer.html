@@ -32,19 +32,47 @@
         <!-- Top Controls -->
         <div class="card mb-6">
           <div class="card-body viewer-header">
-            <div style="flex:1;max-width:400px;">
-              <h2 style="font-size:1.1rem;font-weight:700;margin-bottom:8px;">Eksplorasi Data Provinsi</h2>
+            <div style="flex:1;min-width:280px;max-width:420px;">
+              <h2 style="font-size:1.1rem;font-weight:700;margin-bottom:8px;">Generate Dataset Sintetis</h2>
               <p style="font-size:.85rem;color:var(--text-2);margin-bottom:16px;">
-                Pilih provinsi untuk melihat statistik agregat dan data rumah tangga yang digunakan dalam evaluasi model ML-PMT.
+                Bangun populasi rumah tangga sintetis berdasarkan distribusi BPS Susenas, lalu injeksikan skenario mis-targeting.
               </p>
-              <div class="form-group" style="margin-bottom:0;">
-                <label class="form-label" for="prov-select">Pilih Provinsi</label>
-                <select id="prov-select" class="form-control" onchange="loadProvinceData()">
+              <div class="form-group">
+                <label class="form-label" for="prov-select">Provinsi</label>
+                <select id="prov-select" class="form-control">
                   <option value="">-- Memuat provinsi --</option>
                 </select>
               </div>
+              <div class="form-group">
+                <label class="form-label" for="scenario-select">Skenario</label>
+                <select id="scenario-select" class="form-control">
+                  <option value="normal">Kondisi Normal (Baseline)</option>
+                  <option value="phk">PHK Massal (Manufaktur)</option>
+                  <option value="bencana">Pasca-Bencana</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="anomaly-range">Tingkat Anomali Mis-Targeting</label>
+                <div class="range-row">
+                  <input id="anomaly-range" type="range" min="0" max="40" step="1" value="15" oninput="document.getElementById('anomaly-val').textContent=this.value+'%'" />
+                  <span class="range-val" id="anomaly-val">15%</span>
+                </div>
+              </div>
+              <div class="form-group" id="sample-group">
+                <label class="form-label" for="sample-n">Jumlah Rumah Tangga</label>
+                <select id="sample-n" class="form-control">
+                  <option value="1000">1.000</option>
+                  <option value="5000" selected>5.000</option>
+                  <option value="10000">10.000</option>
+                  <option value="25000">25.000</option>
+                </select>
+              </div>
+              <button class="btn btn-primary w-full" id="btn-generate" style="justify-content:center;height:44px;" onclick="generateData()">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z"/></svg>
+                <span id="btn-generate-text">Generate Dataset</span>
+              </button>
             </div>
-            
+
             <div style="flex:2;min-width:300px;" id="prov-stats-container">
               <!-- Stats will be injected here -->
             </div>
@@ -73,7 +101,7 @@
                     <th>Ekonomi &amp; Aset</th>
                     <th>Kondisi Hunian</th>
                     <th>Desil PMT</th>
-                    <th>Desil ML</th>
+                    <th>Desil Aktual</th>
                   </tr>
                 </thead>
                 <tbody id="table-body">
@@ -81,7 +109,14 @@
                 </tbody>
               </table>
             </div>
-            <div style="margin-top:12px;font-size:.75rem;color:var(--text-3);display:flex;gap:16px;">
+            <div class="pagination" id="pagination" style="display:none;">
+              <div class="pg-info" id="pg-info"></div>
+              <div class="pg-btns">
+                <button id="pg-prev" onclick="changePage(-1)">&larr; Sebelumnya</button>
+                <button id="pg-next" onclick="changePage(1)">Berikutnya &rarr;</button>
+              </div>
+            </div>
+            <div style="margin-top:12px;font-size:.75rem;color:var(--text-3);display:flex;gap:16px;flex-wrap:wrap;">
               <div style="display:flex;align-items:center;gap:6px;"><div class="decile-badge decile-low" style="width:16px;height:16px;font-size:.65rem;">1-3</div> Sangat Miskin / Miskin</div>
               <div style="display:flex;align-items:center;gap:6px;"><div class="decile-badge decile-mid" style="width:16px;height:16px;font-size:.65rem;">4-6</div> Rentan Miskin</div>
               <div style="display:flex;align-items:center;gap:6px;"><div class="decile-badge decile-high" style="width:16px;height:16px;font-size:.65rem;">7-10</div> Tidak Miskin</div>
@@ -94,27 +129,53 @@
   </div>
   
   <div id="toast-container"></div>
-  <script src="js/data.js?v=2"></script>
-  <script src="js/app.js?v=2"></script>
+  <script src="js/data.js?v=3"></script>
+  <script src="js/app.js?v=3"></script>
+  <script src="js/config.js?v=3"></script>
+  <script src="js/api.js?v=3"></script>
   <script>
+    var PROVINCES = [];
+    var currentPage = 1;
+    var totalPages = 1;
+    var pageLimit = 50;
+    var hasGenerated = false;
+
     document.addEventListener("DOMContentLoaded", function() {
       document.getElementById("sidebar-mount").innerHTML = App.buildSidebar("generator");
       document.getElementById("topbar-mount").innerHTML = App.buildTopbar("Data Viewer");
+      Api.updateConnChip();
 
-      var sel = document.getElementById("prov-select");
-      sel.innerHTML = "";
-      EkoData.PROVINCES.forEach(function(p) {
-        var opt = document.createElement("option");
-        opt.value = p.id;
-        opt.textContent = p.name;
-        sel.appendChild(opt);
-      });
+      // Sample-size control only matters when a real backend is connected.
+      if (!Api.enabled) document.getElementById("sample-group").style.display = "none";
 
-      if (App.SESSION.province) {
+      // Restore prior selections
+      document.getElementById("scenario-select").value = App.SESSION.scenario || "normal";
+      var ar = document.getElementById("anomaly-range");
+      ar.value = App.SESSION.anomalyPct != null ? App.SESSION.anomalyPct : 15;
+      document.getElementById("anomaly-val").textContent = ar.value + "%";
+
+      Api.getProvinces().then(function(list) {
+        PROVINCES = list;
+        var sel = document.getElementById("prov-select");
+        sel.innerHTML = "";
+        list.forEach(function(p) {
+          var opt = document.createElement("option");
+          opt.value = p.id; opt.textContent = p.name;
+          sel.appendChild(opt);
+        });
+        // Default province
+        var ids = list.map(function(p){ return p.id; });
+        if (!App.SESSION.province || ids.indexOf(App.SESSION.province) < 0) {
+          App.SESSION.province = list[0] && list[0].id;
+        }
         sel.value = App.SESSION.province;
-      }
-      
-      loadProvinceData();
+        sel.onchange = renderProvStats;
+        renderProvStats();
+
+        // If a dataset session already exists, show it; otherwise auto-generate once.
+        if (App.SESSION.session_id) { hasGenerated = true; loadPage(1); }
+        else generateData();
+      });
     });
 
     function getDecileClass(d) {
@@ -123,68 +184,101 @@
       return "decile-high";
     }
 
-    var currentData = [];
-
-    function exportCSV() {
-      if (!currentData.length) {
-        App.showToast('Tidak ada data untuk diekspor.', 'error');
-        return;
-      }
-      var headers = ['ID Record','Kecamatan','Jenis Kelamin KRT','Usia KRT','Jumlah Jiwa','Pendidikan','Sektor','Pengeluaran/Bln','Jenis Lantai','Sumber Air','Kendaraan Roda 4','Kendaraan Roda 2','Desil PMT','Desil ML','Skor PMT','Skor ML'];
-      var rows = currentData.map(function(r) {
-        return [
-          r.id, r.kecamatan, r.headGender, r.headAge, r.hhSize,
-          r.edu, r.sector, r.expenditure,
-          r.floor, r.water,
-          r.ownCar ? 'Ya' : 'Tidak', r.ownMotor ? 'Ya' : 'Tidak',
-          r.pmtDecile, r.mlDecile, r.pmtScore, r.mlScore
-        ].map(function(v) {
-          var s = String(v);
-          return s.indexOf(',') >= 0 || s.indexOf('"') >= 0 ? '"' + s.replace(/"/g, '""') + '"' : s;
-        }).join(',');
-      });
-      var csv = [headers.join(',')].concat(rows).join('\n');
-      var blob = new Blob(["\uFEFF" + csv], { type: 'text/csv;charset=utf-8;' });
-      var url = URL.createObjectURL(blob);
-      var a = document.createElement('a');
-      a.href = url;
-      var pid = document.getElementById('prov-select').value || 'data';
-      a.download = 'rightaid_' + pid + '_' + new Date().toISOString().slice(0,10) + '.csv';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      App.showToast('CSV berhasil diunduh.', 'success');
-    }
-
-    function loadProvinceData() {
+    function renderProvStats() {
       var pid = document.getElementById("prov-select").value;
-      if (!pid) return;
-
       App.SESSION.province = pid;
       App.saveSession();
+      var prov = PROVINCES.find(function(p) { return p.id === pid; }) || PROVINCES[0] || {};
 
-      var prov = EkoData.PROVINCES.find(function(p) { return p.id === pid; }) || EkoData.PROVINCES[0];
+      var items = [
+        { lbl: "Tingkat Kemiskinan", val: prov.povertyRate != null ? prov.povertyRate + "%" : "\u2014" },
+        { lbl: "Rasio Gini", val: prov.giniCoef != null ? prov.giniCoef : "\u2014" }
+      ];
+      if (prov.pctFloorDirt != null) items.push({ lbl: "Lantai Tanah", val: prov.pctFloorDirt + "%" });
+      else if (prov.avgHHSize != null) items.push({ lbl: "Rata Anggota RT", val: prov.avgHHSize });
+      if (prov.pctNoElec != null) items.push({ lbl: "Tanpa Listrik", val: prov.pctNoElec + "%" });
+      else if (prov.urbanPct != null) items.push({ lbl: "Penduduk Urban", val: prov.urbanPct + "%" });
 
-      // Update stats
-      document.getElementById("prov-stats-container").innerHTML = [
-        '<div class="prov-stats">',
-        '<div class="prov-stat-item"><div class="lbl">Tingkat Kemiskinan</div><div class="val">' + prov.povertyRate + '%</div></div>',
-        '<div class="prov-stat-item"><div class="lbl">Rasio Gini</div><div class="val">' + prov.giniCoef + '</div></div>',
-        '<div class="prov-stat-item"><div class="lbl">Lantai Tanah</div><div class="val">' + prov.pctFloorDirt + '%</div></div>',
-        '<div class="prov-stat-item"><div class="lbl">Tanpa Listrik</div><div class="val">' + prov.pctNoElec + '%</div></div>',
-        '</div>'
-      ].join("");
+      document.getElementById("prov-stats-container").innerHTML =
+        '<div class="prov-stats">' + items.map(function(it) {
+          return '<div class="prov-stat-item"><div class="lbl">' + it.lbl + '</div><div class="val">' + it.val + '</div></div>';
+        }).join("") + '</div>';
+    }
 
-      var data = EkoData.generateHouseholds(pid, "normal", 15);
-      currentData = data;
+    async function generateData() {
+      var pid = document.getElementById("prov-select").value;
+      if (!pid) { App.showToast("Pilih provinsi terlebih dahulu.", "error"); return; }
 
-      // Render table
+      var scenario = document.getElementById("scenario-select").value;
+      var anomaly = parseInt(document.getElementById("anomaly-range").value, 10);
+      var n = parseInt(document.getElementById("sample-n").value, 10) || 5000;
+
+      App.SESSION.province = pid;
+      App.SESSION.scenario = scenario;
+      App.SESSION.anomalyPct = anomaly;
+      App.SESSION.sampleN = n;
+
+      var btn = document.getElementById("btn-generate");
+      var btnText = document.getElementById("btn-generate-text");
+      btn.disabled = true; btnText.textContent = "Membangun data...";
+      showTableMessage("Membangun " + App.fmtNum(n) + " rumah tangga sintetis...");
+      renderProvStats();
+
+      try {
+        var res = await Api.generate(pid, scenario, anomaly, n);
+        App.SESSION.session_id = res.session_id;
+        App.saveSession();
+        hasGenerated = true;
+        App.showToast(
+          "Dataset siap: " + App.fmtNum(res.total) + " rumah tangga" +
+          (res.mode === "backend" ? " (live)" : " (demo)") + ".", "success");
+        await loadPage(1);
+      } catch (e) {
+        showTableMessage("Gagal membangun data. Coba lagi.");
+        App.showToast("Gagal generate dataset.", "error");
+      } finally {
+        btn.disabled = false; btnText.textContent = "Generate Ulang";
+      }
+    }
+
+    async function loadPage(page) {
+      currentPage = page;
+      showTableMessage("Memuat data...");
+      var res = await Api.getData(App.SESSION.session_id, page, pageLimit);
+      totalPages = res.pages || 1;
+      renderTable(res.records);
+      renderPagination(res);
+    }
+
+    function changePage(delta) {
+      var next = currentPage + delta;
+      if (next < 1 || next > totalPages) return;
+      loadPage(next);
+    }
+
+    function renderPagination(res) {
+      var pg = document.getElementById("pagination");
+      if ((res.pages || 1) <= 1) { pg.style.display = "none"; return; }
+      pg.style.display = "flex";
+      var from = (res.page - 1) * pageLimit + 1;
+      var to = Math.min(res.total, res.page * pageLimit);
+      document.getElementById("pg-info").textContent =
+        "Menampilkan " + from + "\u2013" + to + " dari " + App.fmtNum(res.total) + " rumah tangga";
+      document.getElementById("pg-prev").disabled = res.page <= 1;
+      document.getElementById("pg-next").disabled = res.page >= res.pages;
+    }
+
+    function showTableMessage(msg) {
+      document.getElementById("table-body").innerHTML =
+        '<tr><td colspan="6" style="text-align:center;padding:40px;color:var(--text-3);">' + msg + '</td></tr>';
+    }
+
+    function renderTable(records) {
+      if (!records || !records.length) { showTableMessage("Tidak ada data."); return; }
       var tbody = document.getElementById("table-body");
-      tbody.innerHTML = data.map(function(r) {
-        var diff = Math.abs(r.pmtDecile - r.mlDecile);
-        var diffBadge = diff >= 2 ? '<span class="diff-warn" title="Beda \u2265 2 desil">\u26A0 Beda Jauh</span>' : '';
-        
+      tbody.innerHTML = records.map(function(r) {
+        var diff = Math.abs(r.pmtDecile - r.actualDecile);
+        var diffBadge = diff >= 2 ? '<span class="diff-warn" title="Beda \u2265 2 desil dari kondisi aktual">\u26A0 Mis-Targeting</span>' : '';
         return [
           '<tr>',
           '<td><div style="font-family:monospace;font-size:.78rem;color:var(--text-2);">' + r.id + '</div></td>',
@@ -192,10 +286,24 @@
           '<td><div style="font-weight:600;font-size:.82rem;">' + App.fmtRp(r.expenditure) + ' / bln</div><div style="font-size:.75rem;color:var(--text-3);">' + r.sector + ' | Mtr: ' + (r.ownMotor?'Ya':'Tdk') + '</div></td>',
           '<td><div style="font-size:.8rem;">Lantai: ' + r.floor + '</div><div style="font-size:.75rem;color:var(--text-3);">Air: ' + r.water + '</div></td>',
           '<td><div class="decile-badge ' + getDecileClass(r.pmtDecile) + '">D' + r.pmtDecile + '</div></td>',
-          '<td><div class="decile-badge ' + getDecileClass(r.mlDecile) + '">D' + r.mlDecile + '</div>' + diffBadge + '</td>',
+          '<td><div class="decile-badge ' + getDecileClass(r.actualDecile) + '">D' + r.actualDecile + '</div>' + diffBadge + '</td>',
           '</tr>'
         ].join("");
       }).join("");
+    }
+
+    async function exportCSV() {
+      if (!hasGenerated) { App.showToast("Generate dataset terlebih dahulu.", "error"); return; }
+      var btn = document.getElementById("btn-export-csv");
+      btn.disabled = true;
+      try {
+        var ok = await Api.exportCsv(App.SESSION.session_id);
+        App.showToast(ok ? "CSV berhasil diunduh." : "Tidak ada data untuk diekspor.", ok ? "success" : "error");
+      } catch (e) {
+        App.showToast("Gagal mengekspor CSV.", "error");
+      } finally {
+        btn.disabled = false;
+      }
     }
   </script>
 </body>
